@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>宜蘭漁港水質監測系統</title>
+<title>宜蘭漁港水質監測系統 - 專家加值版</title>
 
 <!-- TGOS Map API -->
 <script type="text/javascript" 
@@ -19,19 +19,30 @@
 body { margin:0; font-family:"Microsoft JhengHei", sans-serif; display:flex; height:100vh; width:100vw; overflow:hidden; }
 #MapDiv { flex:1; height:100%; }
 #controlPanel {
-    width:400px;
+    width:420px;
     height:100%;
     background:#fff;
     padding:20px;
     box-sizing:border-box;
     overflow-y:auto;
     border-left:1px solid #ccc;
+    box-shadow: -2px 0 5px rgba(0,0,0,0.1);
 }
 h3 { color:#1a73e8; border-bottom:2px solid #1a73e8; padding-bottom:8px; margin-top:0; }
 .row { margin-bottom:20px; }
-select, button { width:100%; padding:8px; font-size:16px; margin-top: 5px; }
-label { font-weight: bold; display: block; }
-.chart-container { position:relative; height:300px; width:100%; margin-bottom:20px; }
+select { width:100%; padding:10px; font-size:16px; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc; }
+label { font-weight: bold; display: block; margin-bottom: 5px; }
+.chart-container { position:relative; height:280px; width:100%; margin-bottom:20px; }
+#analysisCard {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    border-left: 5px solid #1a73e8;
+    font-size: 14px;
+    line-height: 1.6;
+}
+.warning { color: #d93025; font-weight: bold; }
+.normal { color: #188038; font-weight: bold; }
 </style>
 </head>
 
@@ -39,7 +50,7 @@ label { font-weight: bold; display: block; }
     <div id="MapDiv"></div>
 
     <div id="controlPanel">
-        <h3>漁港水質監測</h3>
+        <h3>宜蘭漁港水質加值監測</h3>
         
         <div class="row">
             <label>1. 選擇監測漁港：</label>
@@ -58,6 +69,11 @@ label { font-weight: bold; display: block; }
             </select>
         </div>
 
+        <div id="analysisCard" class="row">
+            <label>💡 環境影響力分析：</label>
+            <div id="impactAnalysis">請選擇漁港以啟動自動診斷...</div>
+        </div>
+
         <div class="row">
             <b>目前顯示：</b> <span id="currentInfo">請選擇漁港</span>
         </div>
@@ -69,11 +85,10 @@ label { font-weight: bold; display: block; }
 
 <script>
 var map = null;
-var portDataMap = {}; // 改用物件來儲存每個漁港(分頁)的資料
+var portDataMap = {}; 
 var markers = {};
 var mainChart = null; 
 
-// 14 個漁港座標 (TWD97)
 var portsCoords = {
     "梗枋漁港": { x: 337764.335, y: 2755398.563 },
     "烏石港": { x: 334224.121, y: 2750857.756 },
@@ -91,41 +106,30 @@ var portsCoords = {
     "朝陽漁港": { x: 333150.115, y: 2706340.334 }
 };
 
-var weatherIcons = {
-    "晴": "☀️",
-    "陰": "☁️",
-    "雨": "🌧️"
-};
+var weatherIcons = { "晴": "☀️", "陰": "☁️", "雨": "🌧️" };
 
 function InitAll() {
-    // 讀取 Excel 檔案 (確保檔名為 water_quality.xlsx)
     fetch('water_quality.xlsx?t=' + Date.now())
-        .then(res => res.arrayBuffer()) // Excel 檔案需要用 arrayBuffer 讀取
+        .then(res => res.arrayBuffer())
         .then(buffer => {
-            // 解析 Excel 檔案
             var workbook = XLSX.read(buffer, { type: 'array' });
-            
-            // 遍歷 Excel 裡的所有分頁 (Sheet)
             workbook.SheetNames.forEach(function(sheetName) {
-                // 如果分頁名稱在我們的漁港清單中，就讀取裡面的資料
                 if (portsCoords[sheetName]) {
                     var sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { raw: false });
-                    portDataMap[sheetName] = sheetData; // 將資料存入對應的漁港屬性中
+                    portDataMap[sheetName] = sheetData;
                 }
             });
-
             updateDropdown();
             initMap();
         })
         .catch(err => {
             console.error("Excel 讀取失敗", err);
-            alert("無法載入 Excel，請確認檔案水質監測檔案(water_quality.xlsx)是否存在。");
+            alert("無法載入 Excel。");
         });
 }
 
 function updateDropdown() {
     var sel = document.getElementById('portSelect');
-    sel.innerHTML = '<option value="">-- 請選擇漁港 --</option>';
     Object.keys(portsCoords).sort().forEach(name => {
         var opt = document.createElement('option');
         opt.value = name; opt.textContent = name;
@@ -136,14 +140,7 @@ function updateDropdown() {
 function initMap() {
     var mapDiv = document.getElementById("MapDiv");
     var startPt = new TGOS.TGPoint(337764.335, 2755398.563);
-    map = new TGOS.TGOnlineMap(mapDiv, TGOS.TGCoordSys.EPSG3826, {
-        zoom: 11,
-        navigationControl: true,
-        navigationControlOptions: {
-            controlPosition: TGOS.TGControlPosition.TOP_LEFT,
-            navigationControlStyle: TGOS.TGNavigationControlStyle.SMALL
-        }
-    });
+    map = new TGOnlineMap(mapDiv, TGOS.TGCoordSys.EPSG3826, { zoom: 11 });
     map.setCenter(startPt);
     createMarkers();
 }
@@ -156,8 +153,6 @@ function createMarkers() {
         markers[name] = mk;
         TGOS.TGEvent.addListener(mk, "click", function() {
             document.getElementById('portSelect').value = name;
-            map.setCenter(pt);
-            map.setZoom(15);
             onFilterChange(); 
         });
     });
@@ -166,129 +161,84 @@ function createMarkers() {
 function onFilterChange() {
     var portName = document.getElementById('portSelect').value;
     var dataType = document.getElementById('typeSelect').value; 
-
-    if (!portName) {
-        document.getElementById('currentInfo').textContent = "尚未選擇";
-        return;
-    }
+    if (!portName) return;
 
     document.getElementById('currentInfo').textContent = portName + " - " + dataType.toUpperCase();
-
-    if (markers[portName]) {
-        var pos = markers[portName].getPosition();
-        map.setCenter(pos);
-    }
+    if (markers[portName]) map.setCenter(markers[portName].getPosition());
     
     updateChart(portName, dataType);
-}
-
-// 修改這裡：直接從 portDataMap 取得特定分頁的資料，並按照年月排序
-function getPortData(portName) {
-    var rows = portDataMap[portName] || [];
-    return rows.sort((a,b) => (a.year*100+a.month)-(b.year*100+b.month));
+    analyzeEnvironmentImpact(portName);
 }
 
 function updateChart(portName, dataType) {
-    var rows = getPortData(portName);
-    
-    if (!rows || rows.length === 0) {
-        if (mainChart) mainChart.destroy();
-        return;
-    }
+    var rows = (portDataMap[portName] || []).sort((a,b) => (a.year*100+a.month)-(b.year*100+b.month));
+    if (rows.length === 0) return;
 
     var labels = rows.map(r => r.year + "/" + r.month);
-    var dataValues = rows.map(r => r[dataType]); 
+    var dataValues = rows.map(r => parseFloat(r[dataType]));
+    
+    var datasets = [{
+        label: dataType.toUpperCase(),
+        data: dataValues,
+        borderColor: '#1a73e8',
+        backgroundColor: '#1a73e8',
+        fill: false, tension: 0.1
+    }];
 
-    var chartLabel = "";
-    var lineColor = "";
-    var yMin = 0, yMax = 100, yStep = 10; 
-
-    if (dataType === 'ph') { 
-        chartLabel = 'pH 值'; 
-        lineColor = 'orange'; 
-        yMin = 5; 
-        yMax = 9; 
-        yStep = 0.5;
-    }
-    else if (dataType === 'do') { 
-        chartLabel = '溶氧量 (DO) (mg/L)'; 
-        lineColor = 'blue'; 
-        yMin = 0; 
-        yMax = 10; 
-        yStep = 1.0;
-    }
-    else if (dataType === 'EC') { 
-        chartLabel = '導電度 (EC) (mS/cm)'; 
-        lineColor = 'green'; 
-        yMin = 30; 
-        yMax = 55; 
-        yStep = 5.0;
-    }
-    else if (dataType === 'salinity') { 
-        chartLabel = '鹽度 (ppt)'; 
-        lineColor = 'purple'; 
-        yMin = 20; 
-        yMax = 48; 
-        yStep = 4.0;
+    // 加值服務：DO 基準線設定
+    if (dataType === 'do') {
+        datasets.push({
+            label: '預警基準線 (2.0)',
+            data: labels.map(() => 2.0),
+            borderColor: 'red',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            pointRadius: 0,
+            fill: false
+        });
     }
 
     if (mainChart) mainChart.destroy();
-
     var ctx = document.getElementById('mainChart').getContext('2d');
     mainChart = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: chartLabel,
-                data: dataValues,
-                borderColor: lineColor,
-                backgroundColor: lineColor,
-                fill: false,
-                tension: 0.1
-            }]
-        },
+        data: { labels: labels, datasets: datasets },
         options: {
             maintainAspectRatio: false,
-            scales: {
-                y: {
-                    min: yMin,        
-                    max: yMax,        
-                    ticks: {
-                        stepSize: yStep 
-                    }
-                }
-            },
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
             plugins: {
                 tooltip: {
                     callbacks: {
                         afterBody: function(context) {
-                            var index = context[0].dataIndex; 
-                            var row = rows[index]; 
-                            
-                            var weather = row['天氣'] || '';
-                            var icon = weatherIcons[weather] || ''; 
-
-                            return [
-                                '', 
-                                '採樣時間: ' + (row['採樣時間'] || '無'),
-                                '潮汐: ' + (row['潮汐'] || '無'),
-                                '天氣: ' + weather + ' ' + icon
-                            ];
+                            var r = rows[context[0].dataIndex];
+                            return ['', '潮汐: ' + r['潮汐'], '天氣: ' + r['天氣'] + (weatherIcons[r['天氣']] || '')];
                         }
-                    },
-                    titleFont: { size: 14 },
-                    bodyFont: { size: 13 },
-                    padding: 10,
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)'
+                    }
                 }
             }
         }
     });
+}
+
+// 加值服務：動態降雨影響分析
+function analyzeEnvironmentImpact(portName) {
+    var rows = portDataMap[portName] || [];
+    var rainEC = rows.filter(r => r['天氣'] === '雨' && r['EC']).map(r => parseFloat(r['EC']));
+    var fineEC = rows.filter(r => r['天氣'] !== '雨' && r['EC']).map(r => parseFloat(r['EC']));
+    var display = document.getElementById('impactAnalysis');
+
+    if (rainEC.length > 0 && fineEC.length > 0) {
+        var avgRain = rainEC.reduce((a,b) => a+b, 0) / rainEC.length;
+        var avgFine = fineEC.reduce((a,b) => a+b, 0) / fineEC.length;
+        var drop = ((avgFine - avgRain) / avgFine * 100).toFixed(1);
+
+        if (drop > 0) {
+            display.innerHTML = `注意：根據現有數據，該港口在<b class="warning">雨天</b>時導電度平均下降 <b class="warning">${drop}%</b>，暗示受陸域逕流影響顯著。`;
+        } else {
+            display.innerHTML = `<span class="normal">分析結果：</span>該港口水質受降雨影響較不明顯，鹽度與導電度表現穩定。`;
+        }
+    } else {
+        display.innerHTML = "數據掃描中... 需包含雨天與晴天紀錄方可產出天氣關聯報告。";
+    }
 }
 </script>
 </body>
