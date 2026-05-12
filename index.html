@@ -4,13 +4,16 @@
 <meta charset="utf-8">
 <title>宜蘭漁港水質監測系統</title>
 
+<!-- TGOS Map API -->
 <script type="text/javascript" 
     src="https://api.tgos.tw/TGOS_API/tgos?ver=2&AppID=x+JLVSx85Lk=&APIKey=in8W74q0ogpcfW/STwicK8D5QwCdddJf05/7nb+OtDh8R99YN3T0LurV4xato3TpL/fOfylvJ9Wv/khZEsXEWxsBmg+GEj4AuokiNXCh14Rei21U5GtJpIkO++Mq3AguFK/ISDEWn4hMzqgrkxNe1Q==" 
     charset="utf-8"></script>
 
+<!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<!-- SheetJS (用來讀取 Excel .xlsx 檔案) -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
 body { margin:0; font-family:"Microsoft JhengHei", sans-serif; display:flex; height:100vh; width:100vw; overflow:hidden; }
@@ -66,9 +69,9 @@ label { font-weight: bold; display: block; }
 
 <script>
 var map = null;
-var csvData = [];
+var portDataMap = {}; // 改用物件來儲存每個漁港(分頁)的資料
 var markers = {};
-var mainChart = null; // 統一使用一個圖表變數
+var mainChart = null; 
 
 // 14 個漁港座標 (TWD97)
 var portsCoords = {
@@ -88,7 +91,6 @@ var portsCoords = {
     "朝陽漁港": { x: 333150.115, y: 2706340.334 }
 };
 
-// 天氣圖示對照表 (使用 Emoji 代表小圖示)
 var weatherIcons = {
     "晴": "☀️",
     "陰": "☁️",
@@ -96,16 +98,28 @@ var weatherIcons = {
 };
 
 function InitAll() {
-    fetch('water_quality.csv?t=' + Date.now())
-        .then(res => res.text())
-        .then(text => {
-            csvData = Papa.parse(text.trim(), { header:true, skipEmptyLines:true, dynamicTyping:true }).data;
+    // 讀取 Excel 檔案 (確保檔名為 water_quality.xlsx)
+    fetch('water_quality.xlsx?t=' + Date.now())
+        .then(res => res.arrayBuffer()) // Excel 檔案需要用 arrayBuffer 讀取
+        .then(buffer => {
+            // 解析 Excel 檔案
+            var workbook = XLSX.read(buffer, { type: 'array' });
+            
+            // 遍歷 Excel 裡的所有分頁 (Sheet)
+            workbook.SheetNames.forEach(function(sheetName) {
+                // 如果分頁名稱在我們的漁港清單中，就讀取裡面的資料
+                if (portsCoords[sheetName]) {
+                    var sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+                    portDataMap[sheetName] = sheetData; // 將資料存入對應的漁港屬性中
+                }
+            });
+
             updateDropdown();
             initMap();
         })
         .catch(err => {
-            console.error("CSV 讀取失敗", err);
-            alert("無法載入 CSV，請確認檔案存在。");
+            console.error("Excel 讀取失敗", err);
+            alert("無法載入 Excel，請確認檔案水質監測檔案(water_quality.xlsx)是否存在。");
         });
 }
 
@@ -168,9 +182,10 @@ function onFilterChange() {
     updateChart(portName, dataType);
 }
 
+// 修改這裡：直接從 portDataMap 取得特定分頁的資料，並按照年月排序
 function getPortData(portName) {
-    return csvData.filter(r => String(r.port).trim() === portName)
-                  .sort((a,b) => (a.year*100+a.month)-(b.year*100+b.month));
+    var rows = portDataMap[portName] || [];
+    return rows.sort((a,b) => (a.year*100+a.month)-(b.year*100+b.month));
 }
 
 function updateChart(portName, dataType) {
@@ -186,7 +201,6 @@ function updateChart(portName, dataType) {
 
     var chartLabel = "";
     var lineColor = "";
-    // 新增 Y軸設定變數
     var yMin = 0, yMax = 100, yStep = 10; 
 
     if (dataType === 'ph') { 
@@ -236,13 +250,12 @@ function updateChart(portName, dataType) {
         },
         options: {
             maintainAspectRatio: false,
-            // 在這裡設定 Y 軸
             scales: {
                 y: {
-                    min: yMin,        // Y軸最小值
-                    max: yMax,        // Y軸最大值
+                    min: yMin,        
+                    max: yMax,        
                     ticks: {
-                        stepSize: yStep // Y軸刻度間距
+                        stepSize: yStep 
                     }
                 }
             },
