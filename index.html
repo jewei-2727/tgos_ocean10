@@ -109,7 +109,7 @@ function InitAll() {
             workbook.SheetNames.forEach(function(sheetName) {
                 // 如果分頁名稱在我們的漁港清單中，就讀取裡面的資料
                 if (portsCoords[sheetName]) {
-                    var sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+                    var sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { raw: false });
                     portDataMap[sheetName] = sheetData; // 將資料存入對應的漁港屬性中
                 }
             });
