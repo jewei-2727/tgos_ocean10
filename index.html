@@ -69,7 +69,7 @@ label { font-weight: bold; display: block; }
 
 <script>
 var map = null;
-var portDataMap = {}; // 改用物件來儲存每個漁港(分頁)的資料
+var portDataMap = {};
 var markers = {};
 var mainChart = null; 
 
@@ -98,19 +98,15 @@ var weatherIcons = {
 };
 
 function InitAll() {
-    // 讀取 Excel 檔案 (確保檔名為 water_quality.xlsx)
     fetch('water_quality.xlsx?t=' + Date.now())
-        .then(res => res.arrayBuffer()) // Excel 檔案需要用 arrayBuffer 讀取
+        .then(res => res.arrayBuffer())
         .then(buffer => {
-            // 解析 Excel 檔案
             var workbook = XLSX.read(buffer, { type: 'array' });
             
-            // 遍歷 Excel 裡的所有分頁 (Sheet)
             workbook.SheetNames.forEach(function(sheetName) {
-                // 如果分頁名稱在我們的漁港清單中，就讀取裡面的資料
                 if (portsCoords[sheetName]) {
                     var sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { raw: false });
-                    portDataMap[sheetName] = sheetData; // 將資料存入對應的漁港屬性中
+                    portDataMap[sheetName] = sheetData;
                 }
             });
 
@@ -154,18 +150,17 @@ function createMarkers() {
         var pt = new TGOS.TGPoint(portsCoords[name].x, portsCoords[name].y);
         var mk = new TGOS.TGMarker(map, pt, name, img);
         markers[name] = mk;
+        // 修正：統一交給 onFilterChange 處理，不另外呼叫 setCenter/setZoom
         TGOS.TGEvent.addListener(mk, "click", function() {
             document.getElementById('portSelect').value = name;
-            map.setCenter(pt);
-            map.setZoom(15);
-            onFilterChange(); 
+            onFilterChange();
         });
     });
 }
 
 function onFilterChange() {
     var portName = document.getElementById('portSelect').value;
-    var dataType = document.getElementById('typeSelect').value; 
+    var dataType = document.getElementById('typeSelect').value;
 
     if (!portName) {
         document.getElementById('currentInfo').textContent = "尚未選擇";
@@ -177,13 +172,15 @@ function onFilterChange() {
     if (markers[portName]) {
         var pos = markers[portName].getPosition();
         map.setCenter(pos);
-        map.setZoom(15);
+        // 修正：延遲執行 setZoom，確保 setCenter 完成後再放大
+        setTimeout(function() {
+            map.setZoom(15);
+        }, 100);
     }
-    
+
     updateChart(portName, dataType);
 }
 
-// 修改這裡：直接從 portDataMap 取得特定分頁的資料，並按照年月排序
 function getPortData(portName) {
     var rows = portDataMap[portName] || [];
     return rows.sort((a,b) => (a.year*100+a.month)-(b.year*100+b.month));
