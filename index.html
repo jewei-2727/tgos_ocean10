@@ -177,6 +177,7 @@ function onFilterChange() {
     if (markers[portName]) {
         var pos = markers[portName].getPosition();
         map.setCenter(pos);
+        map.setZoom(15);
     }
     
     updateChart(portName, dataType);
